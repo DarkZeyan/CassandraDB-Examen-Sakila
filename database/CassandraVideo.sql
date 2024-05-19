@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 19-05-2024 a las 22:20:58
+-- Tiempo de generación: 19-05-2024 a las 23:38:26
 -- Versión del servidor: 8.0.33
 -- Versión de PHP: 8.2.12
 
@@ -27,9 +27,25 @@ DELIMITER $$
 --
 -- Procedimientos
 --
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insert_film` (IN `p_title` VARCHAR(255), IN `p_description` TEXT, IN `p_release_year` YEAR, IN `p_language_id` TINYINT, IN `p_rental_duration` TINYINT, IN `p_rental_rate` DECIMAL(4,2), IN `p_length` SMALLINT, IN `p_replacement_cost` DECIMAL(5,2), IN `p_rating` ENUM('G','PG','PG-13','R','NC-17'), IN `p_special_features` SET('Trailers','Commentaries','Deleted Scenes','Behind the Scenes'))   BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insert_film` (IN `p_title` VARCHAR(255), IN `p_description` TEXT, IN `p_release_year` YEAR, IN `p_category_id` INT, IN `p_language_id` TINYINT, IN `p_rental_duration` TINYINT, IN `p_rental_rate` DECIMAL(4,2), IN `p_length` SMALLINT, IN `p_replacement_cost` DECIMAL(5,2), IN `p_rating` ENUM('G','PG','PG-13','R','NC-17'), IN `p_special_features` SET('Trailers','Commentaries','Deleted Scenes','Behind the Scenes'))   BEGIN
     DECLARE new_film_id INT;
-    
+    DECLARE category_exists INT;
+        DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        -- Ocurrio un error, hacer el rollback.
+        ROLLBACK;
+    END;
+        DECLARE EXIT HANDLER FOR SQLSTATE '23000'
+    BEGIN
+        -- Llave duplicada
+        ROLLBACK;
+    END;
+    DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+    BEGIN
+        -- Custom error
+        ROLLBACK;
+    END;
+
     -- Insertar nueva película en la tabla film
     INSERT INTO film(title, description, release_year, language_id, rental_duration, rental_rate, length, replacement_cost, rating, special_features)
     VALUES(p_title, p_description, p_release_year, p_language_id, p_rental_duration, p_rental_rate, p_length, p_replacement_cost, p_rating, p_special_features);
@@ -43,14 +59,29 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insert_film` (IN `p_title` VARCH
     FROM store;
     
     -- Insertar en la tabla film_category (relación many-to-many)
-    INSERT INTO film_category(film_id, category_id)
-    VALUES(new_film_id, 1); -- Cambia el valor de category_id según sea necesario
-    
+
+    -- Verificar que la categoria existe
+
+
+    IF p_category_id  IS NOT NULL THEN
+        SELECT COUNT(*) INTO category_exists FROM category WHERE category_id = p_category_id;
+            IF category_exists = 0 THEN
+                SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Category ID does not exist';
+            END IF;
+        INSERT INTO film_category(film_id, category_id)
+        VALUES(new_film_id, p_category_id);
+    ELSE
+        INSERT INTO film_category(film_id, category_id)
+        VALUES(new_film_id, 1); -- Cambiar el valor de category_id según sea necesario
+    END IF;
     -- Actualizar la tabla film_actor (relación many-to-many)
     INSERT INTO film_actor(film_id, actor_id)
     SELECT new_film_id, actor_id
     FROM actor
-    ORDER BY RAND() LIMIT 3; -- Cambia el valor de LIMIT según sea necesario
+    ORDER BY RAND() LIMIT 3; -- Cambiar el valor de LIMIT según sea necesario
+
+    -- Confirmar la transacción
+    COMMIT;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_manage_customer` (IN `p_customer_id` INT, IN `p_store_id` TINYINT, IN `p_first_name` VARCHAR(45), IN `p_last_name` VARCHAR(45), IN `p_email` VARCHAR(50), IN `p_address` VARCHAR(50), IN `p_address2` VARCHAR(50), IN `p_city` VARCHAR(50), IN `p_district` VARCHAR(20), IN `p_country` VARCHAR(50), IN `p_postal_code` VARCHAR(10), IN `p_phone` VARCHAR(20), IN `p_active` BOOLEAN)   BEGIN
@@ -147,6 +178,59 @@ ELSE
 
 END IF;
 
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_update_film` (IN `p_film_id` INT, IN `p_title` VARCHAR(255), IN `p_description` TEXT, IN `p_release_year` YEAR, IN `p_category_id` INT, IN `p_language_id` TINYINT, IN `p_rental_duration` TINYINT, IN `p_rental_rate` DECIMAL(4,2), IN `p_length` SMALLINT, IN `p_replacement_cost` DECIMAL(5,2), IN `p_rating` ENUM('G','PG','PG-13','R','NC-17'), IN `p_special_features` SET('Trailers','Commentaries','Deleted Scenes','Behind the Scenes'))   BEGIN
+    DECLARE category_exists INT;
+    DECLARE film_exists INT;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        -- Ocurrio un error, hacer el rollback.
+        ROLLBACK;
+    END;
+    DECLARE EXIT HANDLER FOR SQLSTATE '45000'
+    BEGIN
+        -- Error personalizado para verificar si la película existe
+        ROLLBACK;
+    END;
+
+    -- Actualizar la película en la tabla film
+    -- Verificar que la película existe
+    SELECT COUNT(*) INTO film_exists FROM film WHERE film_id = p_film_id;
+    IF film_exists = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'The film with that ID does not exist';
+    END IF;
+    UPDATE film
+    SET title = p_title,
+        description = p_description,
+        release_year = p_release_year,
+        language_id = p_language_id,
+        rental_duration = p_rental_duration,
+        rental_rate = p_rental_rate,
+        length = p_length,
+        replacement_cost = p_replacement_cost,
+        rating = p_rating,
+        special_features = p_special_features
+    WHERE film_id = p_film_id;
+    
+    -- Actualizar la tabla film_category (relación many-to-many)
+
+    -- Verificar que la categoria existe
+    IF p_category_id  IS NOT NULL THEN
+        SELECT COUNT(*) INTO category_exists FROM category WHERE category_id = p_category_id;
+            IF category_exists = 0 THEN
+                SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Category ID does not exist';
+            END IF;
+        UPDATE film_category
+        SET category_id = p_category_id
+        WHERE film_id = p_film_id;
+    ELSE
+        UPDATE film_category
+        SET category_id = 1
+        WHERE film_id = p_film_id; -- Cambiar el valor de category_id según sea necesario
+    END IF;
+    -- Confirmar la transacción
+    COMMIT;
 END$$
 
 --
@@ -3666,7 +3750,8 @@ INSERT INTO `film` (`film_id`, `title`, `description`, `release_year`, `language
 (998, 'ZHIVAGO CORE', 'A Fateful Yarn of a Composer And a Man who must Face a Boy in The Canadian Rockies', '2006', 1, NULL, 6, 0.99, 105, 10.99, 'NC-17', 'Deleted Scenes', '2006-02-15 05:03:42'),
 (999, 'ZOOLANDER FICTION', 'A Fateful Reflection of a Waitress And a Boat who must Discover a Sumo Wrestler in Ancient China', '2006', 1, NULL, 5, 2.99, 101, 28.99, 'R', 'Trailers,Deleted Scenes', '2006-02-15 05:03:42'),
 (1000, 'ZORRO ARK', 'A Intrepid Panorama of a Mad Scientist And a Boy who must Redeem a Boy in A Monastery', '2006', 1, NULL, 3, 4.99, 50, 18.99, 'NC-17', 'Trailers,Commentaries,Behind the Scenes', '2006-02-15 05:03:42'),
-(1002, 'TRANSFORMERS AOE', 'TEST', '2014', 1, NULL, 6, 10.99, 157, 20.99, 'PG', 'Deleted Scenes', '2024-05-06 04:48:06');
+(1002, 'TRANSFORMERS AOE', 'TEST', '2014', 1, NULL, 6, 10.99, 157, 20.99, 'PG', 'Deleted Scenes', '2024-05-06 04:48:06'),
+(1003, 'TRANSFORMERS 3: DARK OF THE MOON', 'THIRD MOVIE OF TRANSFORMERS', '2011', 1, NULL, 6, 10.99, 167, 29.99, 'PG-13', 'Trailers', '2024-05-19 21:32:28');
 
 --
 -- Disparadores `film`
@@ -6732,6 +6817,7 @@ INSERT INTO `film_actor` (`actor_id`, `film_id`, `last_update`) VALUES
 (107, 905, '2006-02-15 05:05:03'),
 (107, 973, '2006-02-15 05:05:03'),
 (107, 977, '2006-02-15 05:05:03'),
+(107, 1003, '2024-05-19 21:12:07'),
 (108, 1, '2006-02-15 05:05:03'),
 (108, 6, '2006-02-15 05:05:03'),
 (108, 9, '2006-02-15 05:05:03'),
@@ -7113,6 +7199,7 @@ INSERT INTO `film_actor` (`actor_id`, `film_id`, `last_update`) VALUES
 (121, 884, '2006-02-15 05:05:03'),
 (121, 885, '2006-02-15 05:05:03'),
 (121, 966, '2006-02-15 05:05:03'),
+(121, 1003, '2024-05-19 21:12:07'),
 (122, 22, '2006-02-15 05:05:03'),
 (122, 29, '2006-02-15 05:05:03'),
 (122, 76, '2006-02-15 05:05:03'),
@@ -8406,6 +8493,7 @@ INSERT INTO `film_actor` (`actor_id`, `film_id`, `last_update`) VALUES
 (168, 892, '2006-02-15 05:05:03'),
 (168, 927, '2006-02-15 05:05:03'),
 (168, 959, '2006-02-15 05:05:03'),
+(168, 1003, '2024-05-19 21:12:07'),
 (169, 6, '2006-02-15 05:05:03'),
 (169, 78, '2006-02-15 05:05:03'),
 (169, 93, '2006-02-15 05:05:03'),
@@ -8439,11 +8527,11 @@ INSERT INTO `film_actor` (`actor_id`, `film_id`, `last_update`) VALUES
 (170, 15, '2006-02-15 05:05:03'),
 (170, 27, '2006-02-15 05:05:03'),
 (170, 33, '2006-02-15 05:05:03'),
-(170, 102, '2006-02-15 05:05:03'),
+(170, 102, '2006-02-15 05:05:03');
+INSERT INTO `film_actor` (`actor_id`, `film_id`, `last_update`) VALUES
 (170, 139, '2006-02-15 05:05:03'),
 (170, 180, '2006-02-15 05:05:03'),
-(170, 184, '2006-02-15 05:05:03');
-INSERT INTO `film_actor` (`actor_id`, `film_id`, `last_update`) VALUES
+(170, 184, '2006-02-15 05:05:03'),
 (170, 212, '2006-02-15 05:05:03'),
 (170, 299, '2006-02-15 05:05:03'),
 (170, 322, '2006-02-15 05:05:03'),
@@ -10284,7 +10372,8 @@ INSERT INTO `film_category` (`film_id`, `category_id`, `last_update`) VALUES
 (998, 11, '2006-02-15 05:07:09'),
 (999, 3, '2006-02-15 05:07:09'),
 (1000, 5, '2006-02-15 05:07:09'),
-(1002, 1, '2024-05-06 04:48:06');
+(1002, 1, '2024-05-06 04:48:06'),
+(1003, 1, '2024-05-19 21:32:28');
 
 -- --------------------------------------------------------
 
@@ -15907,7 +15996,9 @@ INSERT INTO `inventory` (`inventory_id`, `film_id`, `store_id`, `last_update`) V
 (4580, 1000, 2, '2006-02-15 05:09:17'),
 (4581, 1000, 2, '2006-02-15 05:09:17'),
 (4582, 1002, 1, '2024-05-06 04:48:06'),
-(4583, 1002, 2, '2024-05-06 04:48:06');
+(4583, 1002, 2, '2024-05-06 04:48:06'),
+(4585, 1003, 1, '2024-05-19 21:12:06'),
+(4586, 1003, 2, '2024-05-19 21:12:06');
 
 --
 -- Disparadores `inventory`
@@ -16062,7 +16153,9 @@ CREATE TABLE `log_film` (
 INSERT INTO `log_film` (`log_id`, `date`, `user`, `movement`, `operation`) VALUES
 (1, '2024-05-06 03:52:19', 'root@localhost', 'INSERT', ' SE INSERTO LA PELICULA CON ID 1001 de TITULO: The Shawshank Redemption'),
 (2, '2024-05-06 03:54:41', 'root@localhost', 'DELETE', ' SE ELIMINO LA PELICULA: The Shawshank RedemptionSE ELIMINO LA DESCRIPCION: Two imprisonedSE ELIMINO LA PELICULA CON ID: 1001SE ELIMINO EL AÑO DE LANZAMIENTO: 1994SE ELIMINO EL IDIOMA: 1SE ELIMINO EL IDIOMA ORIGINAL: 1SE ELIMINO LA DURACION DE ALQUILER: 3SE ELIMINO LA TARIFA DE ALQUILER: 4.99SE ELIMINO LA DURACION: 142SE ELIMINO EL COSTO DE REEMPLAZO: 19.99SE ELIMINO LA CLASIFICACION: RSE ELIMINO LAS CARACTERISTICAS ESPECIALES: TrailersSE ELIMINO LA FECHA DE ULTIMA ACTUALIZACION: 2024-05-05 21:52:19'),
-(3, '2024-05-06 04:48:06', 'root@localhost', 'INSERT', ' SE INSERTO LA PELICULA CON ID 1002 de TITULO: TRANSFORMERS AOE');
+(3, '2024-05-06 04:48:06', 'root@localhost', 'INSERT', ' SE INSERTO LA PELICULA CON ID 1002 de TITULO: TRANSFORMERS AOE'),
+(4, '2024-05-19 21:12:06', 'root@localhost', 'INSERT', ' SE INSERTO LA PELICULA CON ID 1003 de TITULO: TRANSFORMERS DARK OF THE MOON'),
+(5, '2024-05-19 21:32:28', 'root@localhost', 'UPDATE', ' SE MODIFICO EL TITULO DE: TRANSFORMERS DARK OF THE MOON A: TRANSFORMERS 3: DARK OF THE MOON SE MODIFICO LA TARIFA DE ALQUILER DE: 3.70 A: 10.99 SE MODIFICO LA DURACION DE: 160 A: 167 SE MODIFICO LA FECHA DE ULTIMA ACTUALIZACION DE: 2024-05-19 15:12:06 A: 2024-05-19 15:32:28');
 
 -- --------------------------------------------------------
 
@@ -16084,7 +16177,9 @@ CREATE TABLE `log_inventory` (
 
 INSERT INTO `log_inventory` (`log_id`, `date`, `user`, `movement`, `operation`) VALUES
 (1, '2024-05-06 04:48:06', 'root@localhost', 'INSERT', ' SE INSERTO EL INVENTARIO CON ID: 4582SE INSERTO EL ID DE LA PELICULA: 1002SE INSERTO EL ID DE LA TIENDA: 1SE INSERTO LA FECHA DE ULTIMA ACTUALIZACION: 2024-05-05 22:48:06'),
-(2, '2024-05-06 04:48:06', 'root@localhost', 'INSERT', ' SE INSERTO EL INVENTARIO CON ID: 4583SE INSERTO EL ID DE LA PELICULA: 1002SE INSERTO EL ID DE LA TIENDA: 2SE INSERTO LA FECHA DE ULTIMA ACTUALIZACION: 2024-05-05 22:48:06');
+(2, '2024-05-06 04:48:06', 'root@localhost', 'INSERT', ' SE INSERTO EL INVENTARIO CON ID: 4583SE INSERTO EL ID DE LA PELICULA: 1002SE INSERTO EL ID DE LA TIENDA: 2SE INSERTO LA FECHA DE ULTIMA ACTUALIZACION: 2024-05-05 22:48:06'),
+(3, '2024-05-19 21:12:06', 'root@localhost', 'INSERT', ' SE INSERTO EL INVENTARIO CON ID: 4585 SE INSERTO EL ID DE LA PELICULA: 1003 SE INSERTO EL ID DE LA TIENDA: 1 SE INSERTO LA FECHA DE ULTIMA ACTUALIZACION: 2024-05-19 15:12:06'),
+(4, '2024-05-19 21:12:06', 'root@localhost', 'INSERT', ' SE INSERTO EL INVENTARIO CON ID: 4586 SE INSERTO EL ID DE LA PELICULA: 1003 SE INSERTO EL ID DE LA TIENDA: 2 SE INSERTO LA FECHA DE ULTIMA ACTUALIZACION: 2024-05-19 15:12:06');
 
 -- --------------------------------------------------------
 
@@ -48570,13 +48665,13 @@ ALTER TABLE `customer`
 -- AUTO_INCREMENT de la tabla `film`
 --
 ALTER TABLE `film`
-  MODIFY `film_id` smallint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1003;
+  MODIFY `film_id` smallint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1004;
 
 --
 -- AUTO_INCREMENT de la tabla `inventory`
 --
 ALTER TABLE `inventory`
-  MODIFY `inventory_id` mediumint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4585;
+  MODIFY `inventory_id` mediumint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4588;
 
 --
 -- AUTO_INCREMENT de la tabla `language`
@@ -48600,13 +48695,13 @@ ALTER TABLE `log_customer`
 -- AUTO_INCREMENT de la tabla `log_film`
 --
 ALTER TABLE `log_film`
-  MODIFY `log_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `log_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT de la tabla `log_inventory`
 --
 ALTER TABLE `log_inventory`
-  MODIFY `log_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `log_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT de la tabla `payment`
