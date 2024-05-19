@@ -21,6 +21,6 @@
 
 ## ¿Cómo inicializar el proyecto?
 
-- Para ejecutar el proyecto habrá que correr terminales de Node de manera simultánea.
+- Para ejecutar el proyecto habrá que correr terminales de Node de manera simultánea. Antes de proceder a ejecutar los entornos, se debe hacer uso del comando `npm install`
 
 - Para correr la ejecución del backend por favor de ejecutar el comando `npm run start-backend` y para la ejecucion del frontend hacer uso del comando `npm run start-frontend`
