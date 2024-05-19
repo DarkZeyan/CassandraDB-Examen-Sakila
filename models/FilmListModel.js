@@ -9,6 +9,7 @@ const FilmListModel = db.define('vw_film_list', {
     language: {type: DataTypes.STRING},
     original_language: {type: DataTypes.STRING},
     rental_duration: {type: DataTypes.INTEGER},
+    rental_rate: {type: DataTypes.DOUBLE},
     length: {type: DataTypes.INTEGER},
     replacement_cost: {type: DataTypes.DOUBLE},
     rating: {type: DataTypes.STRING},

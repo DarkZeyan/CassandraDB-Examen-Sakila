@@ -3,7 +3,7 @@ import FilmListModel from "../models/FilmListModel.js";
 export const getAllFilms = async (req, res) => {
     try {
         const films = await FilmListModel.findAll({
-            attributes: { exclude: ['id', 'createdt', 'updatedAt'] }
+            attributes: { exclude: ['id', 'createdAt', 'updatedAt', 'created_at', 'updated_at'] }
         });
         res.json(films);
     } catch (error) {
